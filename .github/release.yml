@@ -1,0 +1,9 @@
+# Configuración de las notas **autogeneradas** por GitHub (bloque inferior del Release).
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+  categories:
+    - title: Cambios
+      labels:
+        - "*"

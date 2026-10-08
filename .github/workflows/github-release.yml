@@ -1,0 +1,39 @@
+# Publica un Release en GitHub por cada tag v* con formato fijo:
+# - Bloque intro (siempre igual) → CHANGELOG.md del tag como fuente humana.
+# - Bloque siguiente → notas autogeneradas por GitHub (PRs/commits entre tags).
+name: GitHub Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Create Release for tag
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            ### Historial detallado (fuente principal)
+
+            **[CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md)** en la etiqueta **`${{ github.ref_name }}`**: convención por día y tipo (feat / fix / docs…), alineado con `scripts/generate_changelog.py`.
+
+            ### Resumen automático (GitHub)
+
+            A continuación, el listado **autogenerado** por GitHub (PRs/commits entre esta versión y la anterior). Si solo ves enlaces tipo «Full changelog», es normal cuando hay pocos PRs etiquetados.
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
