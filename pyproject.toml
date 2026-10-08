@@ -1,0 +1,54 @@
+[project]
+name = "chalice-devops-lab"
+version = "1.0.0"
+description = "AWS Chalice REST API with a full local DevOps platform: tests, coverage, SonarQube, Prometheus, Blackbox, Grafana"
+requires-python = ">=3.12"
+dependencies = ["chalice==1.33.0"]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.1.1",
+  "pytest-cov==7.1.0",
+  "requests==2.34.2",
+  "ruff==0.16.10",
+  "black==26.10.0",
+  "bandit==1.9.4",
+  "pip-audit==2.10.1",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = [".venv", ".chalice", "htmlcov", "site"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.black]
+line-length = 110
+target-version = ["py312"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["app.py", "chalicelib"]
+branch = true
+omit = ["*/__pycache__/*", ".venv/*"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = false
+precision = 2
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.bandit]
+exclude_dirs = [".venv", "tests"]

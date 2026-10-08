@@ -1,0 +1,250 @@
+name: chalice-devops-lab
+
+x-app-env: &app-env
+  APP_STAGE: ${APP_STAGE:-dev}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  SERVICE_NAME: ${SERVICE_NAME:-chalice-api}
+  METRICS_ENABLED: ${METRICS_ENABLED:-true}
+  DEMO_ENDPOINTS_ENABLED: ${DEMO_ENDPOINTS_ENABLED:-true}
+  DEMO_MAX_DELAY_SECONDS: ${DEMO_MAX_DELAY_SECONDS:-5}
+
+networks:
+  app:
+    driver: bridge
+  quality:
+    driver: bridge
+
+volumes:
+  prometheus-data: {}
+  grafana-data: {}
+  postgres-data: {}
+  sonarqube-data: {}
+  sonarqube-extensions: {}
+
+services:
+  chalice-api:
+    build:
+      context: .
+      dockerfile: docker/chalice/Dockerfile
+      target: runtime
+    image: chalice-devops-lab/api:local
+    environment: *app-env
+    ports:
+      - "0.0.0.0:${API_HOST_PORT:-8000}:8000"
+    networks: [app]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u,sys; sys.exit(0 if u.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.27.0
+    command:
+      - "--config.file=/etc/blackbox/blackbox.yml"
+      - "--log.level=info"
+    volumes:
+      - ./monitoring/blackbox:/etc/blackbox:ro
+    ports:
+      - "0.0.0.0:${BLACKBOX_HOST_PORT:-9115}:9115"
+    networks: [app]
+    restart: unless-stopped
+    depends_on:
+      chalice-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9115/-/healthy >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROM_HOST_PORT:-9090}:9090"
+    networks: [app]
+    restart: unless-stopped
+    depends_on:
+      blackbox-exporter:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/-/ready >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_HOST_PORT:-3000}:3000"
+    networks: [app]
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3000/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  synthetic-traffic:
+    image: python:3.12-slim
+    command: ["python", "/scripts/traffic/traffic_generator.py"]
+    environment:
+      TRAFFIC_MODE: ${TRAFFIC_MODE:-normal}
+      TRAFFIC_RPS: ${TRAFFIC_RPS:-5}
+      TRAFFIC_DURATION: ${TRAFFIC_DURATION:-60}
+      TRAFFIC_BASE_URL: http://chalice-api:8000
+    volumes:
+      - ./scripts:/scripts:ro
+    networks: [app]
+    profiles: [traffic]
+    restart: "no"
+    depends_on:
+      chalice-api:
+        condition: service_healthy
+
+  tests:
+    build:
+      context: .
+      dockerfile: docker/chalice/Dockerfile
+      target: tests
+    image: chalice-devops-lab/tests:local
+    command:
+      - pytest
+      - -q
+      - --cov
+      - --cov-report=term
+      - --cov-report=xml:/srv/project/coverage.xml
+      - --cov-report=html
+      - --junitxml=/srv/project/reports/junit.xml
+    environment:
+      <<: *app-env
+      CHALICE_BASE_URL: http://chalice-api:8000
+    volumes:
+      - .:/srv/project
+    networks: [app]
+    profiles: [test]
+    restart: "no"
+    depends_on:
+      chalice-api:
+        condition: service_healthy
+
+  sonarqube-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [quality]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  sonarqube:
+    image: sonarqube:community
+    depends_on:
+      sonarqube-db:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonarqube-db:5432/${POSTGRES_DB}
+      SONAR_JDBC_USERNAME: ${POSTGRES_USER}
+      SONAR_JDBC_PASSWORD: ${POSTGRES_PASSWORD}
+    ulimits:
+      nofile:
+        soft: 131072
+        hard: 131072
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-extensions:/opt/sonarqube/extensions
+    ports:
+      - "${SONAR_HOST_PORT:-9000}:9000"
+    networks: [quality]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9000/api/system/status | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 60s
+
+  sonar-bootstrap:
+    build:
+      context: docker/sonar-bootstrap
+    image: chalice-devops-lab/sonar-bootstrap:local
+    entrypoint: ["bash", "/work/sonar_bootstrap.sh"]
+    environment:
+      SONAR_HOST_URL: http://sonarqube:9000
+      SECRETS_DIR: /run/secrets
+      SONAR_PROJECT_KEY: ${SONAR_PROJECT_KEY:-chalice-devops-lab}
+      SONAR_PROJECT_NAME: ${SONAR_PROJECT_NAME:-AWS Chalice DevOps Lab}
+      SONAR_QUALITY_GATE: ${SONAR_QUALITY_GATE:-chalice-devops-lab-gate}
+      SONAR_STARTUP_TIMEOUT: ${SONAR_STARTUP_TIMEOUT:-300}
+      SONAR_POLL_INTERVAL: ${SONAR_POLL_INTERVAL:-5}
+      SONAR_TOKEN_NAME: ${SONAR_TOKEN_NAME:-lab-scanner-token}
+      SONAR_ROTATE_TOKEN: ${SONAR_ROTATE_TOKEN:-0}
+    volumes:
+      - ./.sonar:/run/secrets
+      - ./sonar/bootstrap:/work:ro
+    networks: [quality]
+    profiles: [quality]
+    restart: "no"
+    depends_on:
+      sonarqube:
+        condition: service_started
+
+  sonar-scanner:
+    build:
+      context: docker/sonar-scanner
+    image: chalice-devops-lab/sonar-scanner:local
+    entrypoint: []
+    working_dir: /project
+    volumes:
+      - .:/project
+      - ./.sonar:/run/secrets:ro
+    environment:
+      SONAR_HOST_URL: http://sonarqube:9000
+    command:
+      - sh
+      - -c
+      - >-
+        test -s /run/secrets/token || { echo "ERROR: missing scanner token; run sonar-bootstrap first" >&2; exit 1; };
+        SONAR_TOKEN="$$(cat /run/secrets/token)" sonar-scanner
+        -Dsonar.host.url="$$SONAR_HOST_URL"
+    networks: [quality]
+    profiles: [quality]
+    restart: "no"
+    depends_on:
+      sonar-bootstrap:
+        condition: service_completed_successfully

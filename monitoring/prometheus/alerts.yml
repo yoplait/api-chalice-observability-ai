@@ -1,0 +1,62 @@
+groups:
+  - name: chalice-api-synthetic
+    rules:
+      - alert: ChaliceAPIDown
+        expr: sum(probe_success{job="blackbox-http"}) < 1
+        for: 1m
+        labels:
+          severity: critical
+          category: api
+        annotations:
+          summary: "All Chalice synthetic probes failing"
+          description: "No blackbox probe to the Chalice API succeeded for 1m. The API is likely down (not a monitoring outage: exporter job itself is up). Value: {{ $value }}."
+
+      - alert: ChaliceHTTPProbeFailure
+        expr: probe_success{job="blackbox-http"} == 0
+        for: 30s
+        labels:
+          severity: warning
+          category: api
+        annotations:
+          summary: "Synthetic probe failing for {{ $labels.endpoint }}"
+          description: "Blackbox probe against {{ $labels.instance }} failed or returned unexpected content for 30s."
+
+      - alert: ChaliceReadinessFailed
+        expr: probe_success{job="blackbox-http", endpoint="ready"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: api
+        annotations:
+          summary: "Chalice /ready is not returning 200 + ready payload"
+          description: "Readiness probe failed for 1m on {{ $labels.instance }}. Liveness may still be OK — the instance is not ready to serve traffic."
+
+      - alert: ChaliceHighSyntheticLatency
+        expr: probe_duration_seconds{job="blackbox-http"} > 0.75
+        for: 2m
+        labels:
+          severity: warning
+          category: api
+        annotations:
+          summary: "High synthetic latency on {{ $labels.endpoint }}"
+          description: "Blackbox probe duration above 0.75s for 2m on {{ $labels.instance }} (current {{ $value | humanizeDuration }})."
+
+      - alert: ChaliceAppErrors
+        expr: increase(chalice_http_errors_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          category: api-internal
+        annotations:
+          summary: "Unhandled application errors on {{ $labels.route }}"
+          description: "Chalice middleware recorded 5xx errors for {{ $labels.route }} in the last 5m (internal app metrics, not synthetic probes)."
+
+      - alert: MonitoringTargetMissing
+        expr: up{job=~"prometheus|chalice-app|blackbox-http"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          category: monitoring
+        annotations:
+          summary: "Monitoring target {{ $labels.job }}/{{ $labels.instance }} is missing"
+          description: "Prometheus itself cannot scrape this monitoring target for 2m. This is a monitoring-system problem, not necessarily an API outage — distinguish via ChaliceAPIDown."

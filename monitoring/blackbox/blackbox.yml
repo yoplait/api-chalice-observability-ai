@@ -1,0 +1,37 @@
+modules:
+  http_health:
+    prober: http
+    timeout: 8s
+    http:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+      follow_redirects: false
+      fail_if_body_not_matches_regexp:
+        - '"status":"ok"'
+  http_ready:
+    prober: http
+    timeout: 8s
+    http:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+      follow_redirects: false
+      fail_if_body_not_matches_regexp:
+        - '"status":"ready"'
+  http_hello:
+    prober: http
+    timeout: 8s
+    http:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+      follow_redirects: false
+      fail_if_body_not_matches_regexp:
+        - '"message":"Hello, '
+  http_version:
+    prober: http
+    timeout: 8s
+    http:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+      follow_redirects: false
+      fail_if_body_not_matches_regexp:
+        - '"version":"[0-9]+\.[0-9]+\.[0-9]+"'

@@ -1,0 +1,20 @@
+================================================================
+  Chalice DevOps Lab — Credenciales de acceso
+================================================================
+
+GRAFANA       http://localhost:3001
+  Login:      admin
+  Password:   DIQsBlmUqZHU6KzLkDLTZuCE
+
+PROMETHEUS    http://localhost:9090
+  (sin autenticación)
+
+SONARQUBE     http://localhost:9000
+  Login:      admin
+  Password:   j2Jw5WfmUa3c0mEY_Sp3c!@l
+  Token:      N/A (pendiente)
+
+API CHALICE   http://localhost:8080
+  (sin autenticación)
+
+================================================================

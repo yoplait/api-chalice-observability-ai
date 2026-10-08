@@ -1,0 +1,28 @@
+{
+  "version": "2.0",
+  "app_name": "chalice-devops-lab",
+  "stages": {
+    "dev": {
+      "api_gateway_stage": "dev",
+      "autogen_policy": true,
+      "environment_variables": {
+        "APP_STAGE": "dev",
+        "LOG_LEVEL": "INFO",
+        "METRICS_ENABLED": "true",
+        "DEMO_ENDPOINTS_ENABLED": "true"
+      }
+    },
+    "prod": {
+      "api_gateway_stage": "prod",
+      "autogen_policy": false,
+      "iam_policy_file": "policy-prod.json",
+      "lambda_python_runtime": "python3.12",
+      "environment_variables": {
+        "APP_STAGE": "prod",
+        "LOG_LEVEL": "WARNING",
+        "METRICS_ENABLED": "false",
+        "DEMO_ENDPOINTS_ENABLED": "false"
+      }
+    }
+  }
+}
