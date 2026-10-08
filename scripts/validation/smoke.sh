@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Smoke tests against the live Chalice API on localhost.
 set -euo pipefail
-BASE="${CHALICE_BASE_URL:-http://localhost:8000}"
+BASE="${CHALICE_BASE_URL:-http://localhost:8080}"
 PASS=0
 FAIL=0
 assert(){

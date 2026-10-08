@@ -16,6 +16,7 @@ GRAFANA_PWD ?= $(shell grep -m1 '^GRAFANA_ADMIN_PASSWORD' .env 2>/dev/null | cut
 .PHONY: all help up down destroy bootstrap status logs validate lint security test coverage
 .PHONY: smoke-test observability-validate traffic traffic-errors traffic-latency
 .PHONY: sonar sonar-init sonar-rotate-token quality-gate aws-package
+.PHONY: creds
 
 all: validate
 
@@ -53,7 +54,7 @@ up: .env
 	@echo "  ┌─ Infrastructure started ───────────────────────────────────┐"
 	@echo "  │  API       : http://localhost:$(API_PORT)                    │"
 	@echo "  │  SonarQube : http://localhost:9000                           │"
-	@echo "  │  Grafana   : http://localhost:3000  admin/$(GRAFANA_PWD)      │"
+	@echo "  │  Grafana   : http://localhost:3001  admin/$(GRAFANA_PWD)      │"
 	@echo "  │  Prometheus: http://localhost:9090                           │"
 	@echo "  │  Blackbox  : http://localhost:9115                           │"
 	@echo "  └──────────────────────────────────────────────────────────────┘"
@@ -137,6 +138,30 @@ aws-package:
 	$(VENV)/bin/chalice package --sam-template sam_out/
 	@echo "  ─ SAM template: sam_out/template.yaml"
 	@ls -lh sam_out/
+
+# ── credentials ───────────────────────────────────────────────
+creds:
+	@echo "============================================================"
+	@echo "  Credenciales del laboratorio"
+	@echo "============================================================"
+	@echo ""
+	@echo "  GRAFANA     http://localhost:$(shell grep -m1 '^GRAFANA_HOST_PORT' .env 2>/dev/null | cut -d= -f2 || echo 3001)"
+	@echo "  Login:      admin"
+	@echo "  Password:   $(shell grep -m1 '^GRAFANA_ADMIN_PASSWORD' .env 2>/dev/null | cut -d= -f2 || echo '---')"
+	@echo ""
+	@echo "  SONARQUBE   http://localhost:$(shell grep -m1 '^SONAR_HOST_PORT' .env 2>/dev/null | cut -d= -f2 || echo 9000)"
+	@echo "  Login:      admin"
+	@echo "  Password:   $(shell cat .sonar/admin-credentials 2>/dev/null | cut -d: -f2 || echo '---')"
+	@echo "  Token:      $(shell cat .sonar/token 2>/dev/null | head -c 20 || echo '---')"
+	@echo ""
+	@echo "  PROMETHEUS  http://localhost:$(shell grep -m1 '^PROM_HOST_PORT' .env 2>/dev/null | cut -d= -f2 || echo 9090)"
+	@echo "  (sin autenticación)"
+	@echo ""
+	@echo "  API CHALICE http://localhost:$(API_PORT)"
+	@echo "  (sin autenticación)"
+	@echo ""
+	@echo "  Postgres    localhost:5432  user=sonar  pass=$(shell grep -m1 '^POSTGRES_PASSWORD' .env 2>/dev/null | cut -d= -f2 || echo '---')"
+	@echo "============================================================"
 
 # ── bootstrap ─────────────────────────────────────────────────
 bootstrap: .env

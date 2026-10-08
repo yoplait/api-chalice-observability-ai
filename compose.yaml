@@ -235,13 +235,14 @@ services:
       - ./.sonar:/run/secrets:ro
     environment:
       SONAR_HOST_URL: http://sonarqube:9000
+      SONAR_TOKEN_FILE: /run/secrets/token
     command:
-      - sh
+      - /bin/sh
       - -c
-      - >-
-        test -s /run/secrets/token || { echo "ERROR: missing scanner token; run sonar-bootstrap first" >&2; exit 1; };
-        SONAR_TOKEN="$$(cat /run/secrets/token)" sonar-scanner
-        -Dsonar.host.url="$$SONAR_HOST_URL"
+      - |
+        test -s /run/secrets/token || { echo "ERROR: missing scanner token" >&2; exit 1; }
+        export SONAR_TOKEN="$(cat /run/secrets/token)"
+        sonar-scanner -Dsonar.host.url="http://sonarqube:9000"
     networks: [quality]
     profiles: [quality]
     restart: "no"

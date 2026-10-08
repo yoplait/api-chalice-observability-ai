@@ -35,11 +35,11 @@ automatically (admin init, project, Quality Gate, scanner token), starts the Cha
 
 ## URLs & Ports
 
-| Service | URL | Port | Credentials |
-|---------|-----|------|-------------|
-| Chalice API | http://localhost:8000 | 8000 | — |
+| Service | URL | Port (host) | Credentials |
+|---------|-----|-------------|-------------|
+| Chalice API | http://localhost:8080 | 8080 | — |
 | SonarQube | http://localhost:9000 | 9000 | admin / (generated, in `.sonar/admin-credentials`) |
-| Grafana | http://localhost:3000 | 3000 | admin / (generated, in `.env`) |
+| Grafana | http://localhost:3001 | 3001 | admin / (see `.env` or `.access.txt`) |
 | Prometheus | http://localhost:9090 | 9090 | — |
 | Blackbox Exporter | http://localhost:9115 | 9115 | — |
 | Prometheus Alerts | http://localhost:9090/alerts | 9090 | — |
@@ -50,31 +50,33 @@ PostgreSQL (5432) and internal Docker networks are **not** exposed to the host.
 
 ## API Endpoints (curl examples)
 
+Todos los endpoints de la API Chalice están en **http://localhost:8080** (puerto expuesto al host). Dentro del contenedor Docker usa `http://chalice-api:8000`.
+
 ```bash
 # Hello World
-curl http://localhost:8000/hello
-curl http://localhost:8000/hello?name=DevOps
+curl http://localhost:8080/hello
+curl http://localhost:8080/hello?name=DevOps
 
 # Health & Readiness
-curl http://localhost:8000/health
-curl http://localhost:8000/ready
+curl http://localhost:8080/health
+curl http://localhost:8080/ready
 
 # Version
-curl http://localhost:8000/version
+curl http://localhost:8080/version
 
 # Internal metrics (Prometheus format — local only)
-curl http://localhost:8000/metrics
+curl http://localhost:8080/metrics
 
 # Demo: controlled errors (disabled in prod)
-curl http://localhost:8000/demo/error?kind=bad_request
-curl http://localhost:8000/demo/error?kind=unavailable
-curl http://localhost:8000/demo/error?kind=boom
+curl http://localhost:8080/demo/error?kind=bad_request
+curl http://localhost:8080/demo/error?kind=unavailable
+curl http://localhost:8080/demo/error?kind=boom
 
 # Demo: controlled latency
-curl http://localhost:8000/demo/slow?delay=0.5
+curl http://localhost:8080/demo/slow?delay=0.5
 
 # Demo: unhandled exception path
-curl http://localhost:8000/demo/exception
+curl http://localhost:8080/demo/exception
 ```
 
 ---

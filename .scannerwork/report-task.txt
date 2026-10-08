@@ -1,0 +1,6 @@
+projectKey=chalice-devops-lab
+serverUrl=http://sonarqube:9000
+serverVersion=26.9.0.129388
+dashboardUrl=http://sonarqube:9000/dashboard?id=chalice-devops-lab
+ceTaskId=6e52f2af-43ec-4aac-ad40-65c7a1178ab2
+ceTaskUrl=http://sonarqube:9000/api/ce/task?id=6e52f2af-43ec-4aac-ad40-65c7a1178ab2

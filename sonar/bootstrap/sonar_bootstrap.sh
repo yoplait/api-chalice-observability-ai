@@ -155,16 +155,36 @@ fi
 
 # ------------------------------------------------------- 5. scanner user
 SCANNER_LOGIN=scanner
-if [ -s "$SCANNER_FILE" ] && auth_ok "$(cat "$SCANNER_FILE")"; then
-  SCANNER_AUTH="$(cat "$SCANNER_FILE")"
-  log "existing scanner user valid -> reusing"
+# Check if user exists (from previous run or manual creation)
+_user_raw=$(as_admin GET "/api/users/search?login=$SCANNER_LOGIN") || _user_raw=""
+_user_total=$(json_get "$_user_raw" '.paging.total' '0') || _user_total="0"
+if [ "$_user_total" -gt 0 ] 2>/dev/null && [ -s "$SCANNER_FILE" ]; then
+  if auth_ok "$(cat "$SCANNER_FILE")"; then
+    SCANNER_AUTH="$(cat "$SCANNER_FILE")"
+    log "existing scanner user valid -> reusing"
+  else
+    # User exists but auth failed - reset password
+    SCANNER_PW="$(openssl rand -base64 30 | tr -d '/+=' | cut -c1-28)"
+    _old_pw=$(cat "$SCANNER_FILE" | cut -d: -f2)
+    _reset_raw=$(curl -s --max-time 10 -X POST -u "$ADMIN_AUTH" "$HOST/api/users/change_password" \
+      --data-urlencode "login=$SCANNER_LOGIN" \
+      --data-urlencode "previousPassword=$_old_pw" \
+      --data-urlencode "password=$SCANNER_PW") || _reset_raw=""
+    if auth_ok "$SCANNER_LOGIN:$SCANNER_PW"; then
+      printf '%s' "$SCANNER_LOGIN:$SCANNER_PW" > "$SCANNER_FILE"
+      chmod 600 "$SCANNER_FILE"
+      SCANNER_AUTH="$SCANNER_LOGIN:$SCANNER_PW"
+      log "scanner user password reset (persisted 600)"
+    else
+      die "cannot reset scanner user password"
+    fi
+  fi
 else
   SCANNER_PW="$(openssl rand -base64 30 | tr -d '/+=' | cut -c1-28)"
-  _sc_resp=$(as_admin POST "/api/useradmin/create?login=$SCANNER_LOGIN&name=Lab%20Scanner&password=$SCANNER_PW") || _sc_resp=""
-  if json_has "$_sc_resp" '.errors' && ! auth_ok "$SCANNER_LOGIN:$SCANNER_PW"; then
-    as_admin POST "/api/useradmin/update_login?login=$SCANNER_LOGIN&newLogin=$SCANNER_LOGIN" >/dev/null 2>&1 || true
-    _sc_resp2=$(as_admin POST "/api/useradmin/update?login=$SCANNER_LOGIN&password=$SCANNER_PW") || _sc_resp2=""
-    auth_ok "$SCANNER_LOGIN:$SCANNER_PW" || die "cannot establish scanner user"
+  _sc_raw=$(curl -s --max-time 10 -X POST -u "$ADMIN_AUTH" "$HOST/api/users/create?login=$SCANNER_LOGIN&name=Lab%20Scanner&password=$SCANNER_PW") || _sc_raw=""
+  _sc_login=$(json_get "$_sc_raw" '.user.login')
+  if [ "$_sc_login" != "$SCANNER_LOGIN" ]; then
+    die "cannot create scanner user"
   fi
   printf '%s' "$SCANNER_LOGIN:$SCANNER_PW" > "$SCANNER_FILE"
   chmod 600 "$SCANNER_FILE"
@@ -172,9 +192,8 @@ else
   log "scanner user created (persisted 600)"
 fi
 
-# minimum permissions
-as_admin POST "/api/permissions/add_user?login=$SCANNER_LOGIN&permission=scan" >/dev/null 2>&1 || true
-as_admin POST "/api/permissions/add_user?login=$SCANNER_LOGIN&permission=codeview" >/dev/null 2>&1 || true
+# minimum permissions: global scan + project codeviewer
+as_admin POST "/api/permissions/add_global_permission?login=$SCANNER_LOGIN&permission=scan" >/dev/null 2>&1 || true
 as_admin POST "/api/permissions/add_user?projectIdorKey=$PROJECT_KEY&login=$SCANNER_LOGIN&permission=codeviewer" >/dev/null 2>&1 || true
 as_admin POST "/api/permissions/add_user?projectIdorKey=$PROJECT_KEY&login=$SCANNER_LOGIN&permission=user" >/dev/null 2>&1 || true
 log "scanner permissions ensured"

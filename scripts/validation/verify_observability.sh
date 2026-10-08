@@ -4,10 +4,10 @@
 # MUST restore the API on failure (trap/cleanup).
 set -uo pipefail
 
-API="${CHALICE_BASE_URL:-http://localhost:8000}"
+API="${CHALICE_BASE_URL:-http://localhost:8080}"
 BLACKBOX="http://localhost:9115"
 PROM="http://localhost:9090"
-GRAFANA="http://localhost:3000"
+GRAFANA="http://localhost:3001"
 ADMIN="${GRAFANA_ADMIN_USER:-admin}:${GRAFANA_ADMIN_PASSWORD:-admin}"
 PASS=0
 FAIL=0
