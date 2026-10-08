@@ -17,6 +17,56 @@ A fully reproducible, zero-touch local DevOps platform for an AWS Chalice REST A
 
 ---
 
+## Architecture
+
+```
+                    ┌─────────────────────────────────────────────────┐
+                    │              Host (localhost)                    │
+                    │                                                  │
+                    │  ┌──────────────┐  ┌──────────────────────────┐ │
+                    │  │  Grafana     │  │  Prometheus + Blackbox   │ │
+                    │  │  3001        │  │  9090  / 9115            │ │
+                    │  │              │  │  ▲ scrape + probes       │ │
+                    │  │  ◄───────────┼──┼──────────────┐           │ │
+                    │  └──────┬───────┘  └──────┬───────┘           │ │
+                    │         │                  │                   │ │
+                    │  ┌──────┴──────────────────┴──────────────────┐│ │
+                    │  │         Docker Compose (network: app)       ││ │
+                    │  │                                            ││ │
+                    │  │  ┌─────────┐  ┌─────────┐  ┌────────────┐ ││ │
+  Code / CI ──────► │  │  │ SonarQ  │  │  Sonar  │  │  Synthetic │ ││ │
+  (make bootstrap)  │  │  │  u b e  │  │ Scanner │  │  Traffic   │ ││ │
+                    │  │  │ 9000    │  │         │  │  Generator │ ││ │
+                    │  │  │         │  │         │  │  (8080)    │ ││ │
+                    │  │  │  ▲      │  │  ▼      │  └────────────┘ ││ │
+                    │  │  │  │      │  │  Scan  │       │           ││ │
+                    │  │  │  │      │  └─────────┘       │           ││ │
+                    │  │  │  │      │                    │           ││ │
+                    │  │  │  │      │  ┌────────────┐    │           ││ │
+                    │  │  │  │      │  │  Chalice   │◄───┼───────────┤│ │
+                    │  │  │  │      │  │  API       │  8000  Health  ││ │
+                    │  │  │  │      │  │  :8080     │──►├───────────┤│ │
+                    │  │  │  │      │  └────────────┘    │           ││ │
+                    │  │  │  │      │                    │           ││ │
+                    │  │  │  │      │  ┌────────────┐    │           ││ │
+                    │  │  │  │      │  │  Postgres  │    │           ││ │
+                    │  │  │  │      │  │  :5432     │◄───┤           ││ │
+                    │  │  │  │      │  └────────────┘    │           ││ │
+                    │  │  │  │      └───────────────────┘           │ │
+                    │  │  │  │                                       │ │
+                    │  │  │  └──► Quality Gate / Metrics            │ │
+                    │  └──┴──┴──────────────────────────────────────┘ │
+                    └─────────────────────────────────────────────────┘
+
+  Data flow:
+  1. Code → SonarScanner → SonarQube → Quality Gate
+  2. Chalice API → Prometheus (metrics endpoint) + Blackbox (health probes)
+  3. Prometheus + Blackbox → Grafana (dashboard 12 panels)
+  4. Synthetic Traffic → Chalice API (simulates user load)
+```
+
+---
+
 ## Quick Start
 
 ```bash
