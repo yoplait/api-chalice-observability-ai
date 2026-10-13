@@ -183,6 +183,29 @@ curl http://localhost:8080/demo/exception
 
 Dashboards are version-controlled in `monitoring/grafana/dashboards/` and auto-provisioned on every `make up`.
 
+**Dashboard: External API & Status Pages Monitoring** — polls third-party status
+pages (Okta, Twilio, GitHub, Stripe, Google) via the `statuspage-exporter` and
+turns **RED on real incidents**, not just page reachability.
+
+---
+
+## Screenshots
+
+Generated with `make screenshots` (Playwright). Regenerate anytime; they are
+committed as release evidence too.
+
+### AWS Chalice API — Observability
+
+![Chalice Observability dashboard](screenshots/grafana-main-dashboard.png)
+
+### External API & Status Pages Monitoring
+
+![External status pages dashboard](screenshots/grafana-external-apis.png)
+
+### SonarQube Quality Gate
+
+![SonarQube quality gate report](screenshots/sonarqube-dashboard.png)
+
 ---
 
 ## Synthetic Traffic & Failure Simulation
