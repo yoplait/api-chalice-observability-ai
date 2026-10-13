@@ -15,7 +15,7 @@ GRAFANA_PWD ?= $(shell grep -m1 '^GRAFANA_ADMIN_PASSWORD' .env 2>/dev/null | cut
 # ---- helpers ----
 .PHONY: all help up down destroy bootstrap status logs validate lint security test coverage
 .PHONY: smoke-test observability-validate traffic traffic-errors traffic-latency
-.PHONY: sonar sonar-init sonar-rotate-token quality-gate aws-package creds start stop screenshots
+.PHONY: sonar sonar-init sonar-rotate-token quality-gate aws-package creds credentials start stop screenshots
 
 all: validate
 
@@ -46,6 +46,8 @@ help:
 	@echo "  make traffic-latency   Traffic with latency (profile)"
 	@echo "  make validate          Full pipeline (lint → test → sonar → gate → smoke → e2e)"
 	@echo "  make aws-package       chalice package + validate SAM"
+	@echo "  make creds             Show all lab credentials (alias: make credentials)"
+	@echo "  make screenshots       Regenerate dashboard screenshots (Playwright)"
 	@echo "============================================================"
 
 # ── lifecycle ────────────────────────────────────────────────────
@@ -195,8 +197,10 @@ creds:
 	@echo "  API CHALICE http://localhost:$(API_PORT)"
 	@echo "  (sin autenticación)"
 	@echo ""
-	@echo "  Postgres    localhost:5432  user=sonar  pass=$(shell grep -m1 '^POSTGRES_PASSWORD' .env 2>/dev/null | cut -d= -f2 || echo '---')"
+ 	@echo "  Postgres    localhost:5432  user=sonar  pass=$(shell grep -m1 '^POSTGRES_PASSWORD' .env 2>/dev/null | cut -d= -f2 || echo '---')"
 	@echo "============================================================"
+
+credentials: creds
 
 # ── bootstrap ─────────────────────────────────────────────────
 bootstrap: .env

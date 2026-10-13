@@ -20,49 +20,37 @@ A fully reproducible, zero-touch local DevOps platform for an AWS Chalice REST A
 ## Architecture
 
 ```
-                    ┌─────────────────────────────────────────────────┐
-                    │              Host (localhost)                    │
-                    │                                                  │
-                    │  ┌──────────────┐  ┌──────────────────────────┐ │
-                    │  │  Grafana     │  │  Prometheus + Blackbox   │ │
-                    │  │  3001        │  │  9090  / 9115            │ │
-                    │  │              │  │  ▲ scrape + probes       │ │
-                    │  │  ◄───────────┼──┼──────────────┐           │ │
-                    │  └──────┬───────┘  └──────┬───────┘           │ │
-                    │         │                  │                   │ │
-                    │  ┌──────┴──────────────────┴──────────────────┐│ │
-                    │  │         Docker Compose (network: app)       ││ │
-                    │  │                                            ││ │
-                    │  │  ┌─────────┐  ┌─────────┐  ┌────────────┐ ││ │
-  Code / CI ──────► │  │  │ SonarQ  │  │  Sonar  │  │  Synthetic │ ││ │
-  (make bootstrap)  │  │  │  u b e  │  │ Scanner │  │  Traffic   │ ││ │
-                    │  │  │ 9000    │  │         │  │  Generator │ ││ │
-                    │  │  │         │  │         │  │  (8080)    │ ││ │
-                    │  │  │  ▲      │  │  ▼      │  └────────────┘ ││ │
-                    │  │  │  │      │  │  Scan  │       │           ││ │
-                    │  │  │  │      │  └─────────┘       │           ││ │
-                    │  │  │  │      │                    │           ││ │
-                    │  │  │  │      │  ┌────────────┐    │           ││ │
-                    │  │  │  │      │  │  Chalice   │◄───┼───────────┤│ │
-                    │  │  │  │      │  │  API       │  8000  Health  ││ │
-                    │  │  │  │      │  │  :8080     │──►├───────────┤│ │
-                    │  │  │  │      │  └────────────┘    │           ││ │
-                    │  │  │  │      │                    │           ││ │
-                    │  │  │  │      │  ┌────────────┐    │           ││ │
-                    │  │  │  │      │  │  Postgres  │    │           ││ │
-                    │  │  │  │      │  │  :5432     │◄───┤           ││ │
-                    │  │  │  │      │  └────────────┘    │           ││ │
-                    │  │  │  │      └───────────────────┘           │ │
-                    │  │  │  │                                       │ │
-                    │  │  │  └──► Quality Gate / Metrics            │ │
-                    │  └──┴──┴──────────────────────────────────────┘ │
-                    └─────────────────────────────────────────────────┘
+                         Host (localhost)
+  :8080 API   :9090 Prometheus   :3001 Grafana   :9000 SonarQube   :9118 StatusExporter
+
+  ┌───────────────────────── network: app ──────────────────────────┐
+  │                                                                 │
+  │   synthetic-traffic ──► chalice-api ──/metrics──► prometheus    │
+  │                            ▲    │                   │   ▲       │
+  │                  probe     │    │  health/ready/    │   │       │
+  │                            │    │  hello/version    │   │       │
+  │                       blackbox ──┘                  │   │       │
+  │                                                     │   │       │
+  │   statuspage-exporter ──HTTPS──► Okta / Twilio /    │   │       │
+  │        │                         GitHub / Stripe /  │   │       │
+  │        └──/metrics──────────────────────────────────┘   │       │
+  │                                                         │       │
+  │   prometheus ──queries──► grafana (2 dashboards)        │       │
+  └─────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────── network: quality ───────────────────────┐
+  │                                                                 │
+  │   CI / make sonar:  sonar-scanner ──upload──► sonarqube ──► db  │
+  │   make quality-gate:            curl API ──►  sonarqube         │
+  │   sonar-bootstrap (one-shot): project, gate, token, scanner     │
+  └─────────────────────────────────────────────────────────────────┘
 
   Data flow:
-  1. Code → SonarScanner → SonarQube → Quality Gate
-  2. Chalice API → Prometheus (metrics endpoint) + Blackbox (health probes)
-  3. Prometheus + Blackbox → Grafana (dashboard 12 panels)
-  4. Synthetic Traffic → Chalice API (simulates user load)
+  1. Code → sonar-scanner → SonarQube → Quality Gate (make quality-gate)
+  2. chalice-api /metrics → Prometheus; blackbox probes /health /ready /hello /version
+  3. statuspage-exporter → Okta/Twilio/GitHub/Stripe/Google status APIs → Prometheus
+  4. Prometheus → Grafana (Observability + External Status Pages dashboards)
+  5. synthetic-traffic → chalice-api (simulates user load; failure simulation in E2E)
 ```
 
 ---
