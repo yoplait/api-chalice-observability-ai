@@ -20,30 +20,45 @@ A fully reproducible, zero-touch local DevOps platform for an AWS Chalice REST A
 ## Architecture
 
 ```
-                         Host (localhost)
-  :8080 API   :9090 Prometheus   :3001 Grafana   :9000 SonarQube   :9118 StatusExporter
-
-  ┌───────────────────────── network: app ──────────────────────────┐
-  │                                                                 │
-  │   synthetic-traffic ──► chalice-api ──/metrics──► prometheus    │
-  │                            ▲    │                   │   ▲       │
-  │                  probe     │    │  health/ready/    │   │       │
-  │                            │    │  hello/version    │   │       │
-  │                       blackbox ──┘                  │   │       │
-  │                                                     │   │       │
-  │   statuspage-exporter ──HTTPS──► Okta / Twilio /    │   │       │
-  │        │                         GitHub / Stripe /  │   │       │
-  │        └──/metrics──────────────────────────────────┘   │       │
-  │                                                         │       │
-  │   prometheus ──queries──► grafana (2 dashboards)        │       │
-  └─────────────────────────────────────────────────────────────────┘
-
-  ┌──────────────────────── network: quality ───────────────────────┐
-  │                                                                 │
-  │   CI / make sonar:  sonar-scanner ──upload──► sonarqube ──► db  │
-  │   make quality-gate:            curl API ──►  sonarqube         │
-  │   sonar-bootstrap (one-shot): project, gate, token, scanner     │
-  └─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                              HOST  (localhost)                               │
+│   :8080 API    :9090 Prometheus    :3001 Grafana    :9115 Blackbox           │
+│   :9000 SonarQube    :9118 Statuspage                                        │
+│                                                                              │
+│  ┌─────────────────────────── network: app ────────────────────────────────┐ │
+│  │                                                                         │ │
+│  │   ┌───────────────┐  HTTP   ┌───────────────┐  probe  ┌──────────────┐  │ │
+│  │   │   synthetic-  ├────────►│  chalice-api  │◄────────┤  blackbox-   │  │ │
+│  │   │   traffic     │         │   :8000       │         │  exporter    │  │ │
+│  │   └───────────────┘         │   /metrics    │         │   :9115      │  │ │
+│  │                             └──────┬────────┘         └──────┬───────┘  │ │
+│  │                    scrape /metrics │            probe result │          │ │
+│  │                                    ▼                         ▼          │ │
+│  │                             ┌──────────────────────────────────────┐    │ │
+│  │                             │           prometheus :9090           │    │ │
+│  │                             └──────────────────┬───────────────────┘    │ │
+│  │   ┌──────────────────┐   scrape                │ queries                │ │
+│  │   │ statuspage-      │◄──(metrics)─────────────┤                        │ │
+│  │   │ exporter :9118   │                         ▼                        │ │
+│  │   └──────────────────┘              ┌───────────────────┐               │ │
+│  │            │ HTTPS                  │     grafana       │               │ │
+│  │            │                        │  (2 dashboards)   │               │ │
+│  │            │                        └───────────────────┘               │ │
+│  └────────────┼────────────────────────────────────────────────────────────┘ │
+└───────────────┼──────────────────────────────────────────────────────────────┘
+                │
+                ▼
+   ┌────────────────────────────┐          ┌────────────── network: quality ───┐
+   │  Okta · Twilio · GitHub ·  │          │                                   │
+   │  Stripe · Google  (status) │          │   sonar-scanner ──upload──►       │
+   └────────────────────────────┘          │        (CI / make sonar)          │
+                                           │                                   │
+                                           │   sonarqube :9000 ◄──curl──       │
+                                           │   make quality-gate    │          │
+                                           │                        ▼          │
+                                           │                  sonarqube-db     │
+                                           │                  postgres :5432   │
+                                           └───────────────────────────────────┘
 
   Data flow:
   1. Code → sonar-scanner → SonarQube → Quality Gate (make quality-gate)
@@ -77,12 +92,24 @@ automatically (admin init, project, Quality Gate, scanner token), starts the Cha
 |---------|-----|-------------|-------------|
 | Chalice API | http://localhost:8080 | 8080 | — |
 | SonarQube | http://localhost:9000 | 9000 | admin / (generated, in `.sonar/admin-credentials`) |
-| Grafana | http://localhost:3001 | 3001 | admin / (see `.env` or `.access.txt`) |
+| Grafana | http://localhost:3001 | 3001 | admin / (see `.env` — run `make credentials`) |
 | Prometheus | http://localhost:9090 | 9090 | — |
 | Blackbox Exporter | http://localhost:9115 | 9115 | — |
+| Statuspage Exporter | http://localhost:9118 | 9118 | — |
 | Prometheus Alerts | http://localhost:9090/alerts | 9090 | — |
 
 PostgreSQL (5432) and internal Docker networks are **not** exposed to the host.
+
+> **Two different exporters — don't confuse them:**
+> - **blackbox-exporter** (official image, `:9115`) probes the **internal** Chalice
+>   API over HTTP (`/health`, `/ready`, `/hello`, `/version`) and exposes
+>   `probe_success` / `probe_http_duration_seconds`.
+> - **statuspage-exporter** (our script, `scripts/exporters/statuspage_exporter.py`,
+>   `:9118`) polls **external third-party** status pages (Okta, Twilio, GitHub,
+>   Stripe, Google) and exposes `external_status_incidents_active` etc.
+>
+> Prometheus scrapes **both**; the two Grafana dashboards map 1:1 to them
+> (Observability → blackbox, External Status Pages → statuspage).
 
 ---
 

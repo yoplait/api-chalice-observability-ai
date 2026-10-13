@@ -17,7 +17,7 @@ GRAFANA_PWD ?= $(shell grep -m1 '^GRAFANA_ADMIN_PASSWORD' .env 2>/dev/null | cut
 .PHONY: smoke-test observability-validate traffic traffic-errors traffic-latency
 .PHONY: sonar sonar-init sonar-rotate-token quality-gate aws-package creds credentials start stop screenshots
 
-all: validate
+all: help
 
 help:
 	@echo "============================================================"
