@@ -9,12 +9,11 @@ Environment variables:
 """
 from __future__ import annotations
 
-import json
 import random
 import sys
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 
 BASE = f"http://{sys.argv[1]}/" if len(sys.argv) > 1 else "http://chalice-api:8000/"
 MODE = sys.argv[2] if len(sys.argv) > 2 else "normal"

@@ -37,9 +37,21 @@ testpaths = ["tests"]
 addopts = "-ra"
 
 [tool.coverage.run]
-source = ["app.py", "chalicelib"]
+source = ["."]
 branch = true
-omit = ["*/__pycache__/*", ".venv/*"]
+omit = [
+    "*/__pycache__/*",
+    ".venv/*",
+    "scripts/*",
+    "docs/*",
+    "monitoring/*",
+    "docker/*",
+    "sonar/*",
+    "tests/*",
+    "conftest.py",
+    "htmlcov/*",
+]
+relative_files = true
 
 [tool.coverage.report]
 fail_under = 100

@@ -23,7 +23,7 @@ class RouteTemplateCache:
                 continue
             if all(
                 seg == actual or (seg.startswith("{") and seg.endswith("}"))
-                for seg, actual in zip(pat_parts, parts)
+                for seg, actual in zip(pat_parts, parts, strict=True)
             ):
                 self._cache[path] = pattern
                 return pattern

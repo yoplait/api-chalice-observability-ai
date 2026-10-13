@@ -23,3 +23,9 @@ build/
 .idea/
 .vscode/
 docs/evidence/*.log.tmp
+
+# SonarQube scanner cache
+.scannerwork/
+
+# local scratch (never commit)
+tmp/

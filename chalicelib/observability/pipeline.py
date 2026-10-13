@@ -12,7 +12,8 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from chalicelib.logging import correlation_id_var
 from chalicelib.observability.metrics import REGISTRY

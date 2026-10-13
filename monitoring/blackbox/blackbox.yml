@@ -35,3 +35,16 @@ modules:
       follow_redirects: false
       fail_if_body_not_matches_regexp:
         - '"version":"[0-9]+\.[0-9]+\.[0-9]+"'
+  http_status_page:
+    prober: http
+    timeout: 15s
+    http:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+      follow_redirects: true
+      fail_if_body_not_matches_regexp:
+        - ".*"
+      tls_config:
+        insecure_skip_verify: true
+      headers:
+        User-Agent: "External Status Monitor v1.0"

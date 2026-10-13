@@ -32,7 +32,7 @@ class Config:
         return self.stage == "prod"
 
     @classmethod
-    def load(cls) -> "Config":
+    def load(cls) -> Config:
         stage = os.environ.get("APP_STAGE", "dev").strip().lower()
         if stage not in VALID_STAGES:
             raise ValueError(f"APP_STAGE must be one of {VALID_STAGES}, got {stage!r}")

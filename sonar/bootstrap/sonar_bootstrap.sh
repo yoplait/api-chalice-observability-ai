@@ -156,35 +156,51 @@ fi
 # ------------------------------------------------------- 5. scanner user
 SCANNER_LOGIN=scanner
 # Check if user exists (from previous run or manual creation)
-_user_raw=$(as_admin GET "/api/users/search?login=$SCANNER_LOGIN") || _user_raw=""
-_user_total=$(json_get "$_user_raw" '.paging.total' '0') || _user_total="0"
-if [ "$_user_total" -gt 0 ] 2>/dev/null && [ -s "$SCANNER_FILE" ]; then
-  if auth_ok "$(cat "$SCANNER_FILE")"; then
+_user_raw=$(as_admin GET "/api/users/search") || _user_raw=""
+# _user_raw may be empty if api/users/search needs query param; try with query
+if [ -z "$_user_raw" ] || ! echo "$_user_raw" | jq -e '.users[]? | select(.login=="'"$SCANNER_LOGIN"'")' >/dev/null 2>&1; then
+  _user_raw=$(as_admin GET "/api/users/search?query=$SCANNER_LOGIN") || _user_raw=""
+  _user_total=$(json_get "$_user_raw" '.paging.total' '0') || _user_total="0"
+  _found=$(echo "$_user_raw" | jq -e '.users[]? | select(.login=="'"$SCANNER_LOGIN"'")' >/dev/null 2>&1 && echo 1 || echo 0)
+else
+  _user_total=1
+  _found=1
+fi
+if [ "${_found:-0}" = "1" ]; then
+  if [ -s "$SCANNER_FILE" ] && auth_ok "$(cat "$SCANNER_FILE")"; then
     SCANNER_AUTH="$(cat "$SCANNER_FILE")"
     log "existing scanner user valid -> reusing"
   else
-    # User exists but auth failed - reset password
-    SCANNER_PW="$(openssl rand -base64 30 | tr -d '/+=' | cut -c1-28)"
-    _old_pw=$(cat "$SCANNER_FILE" | cut -d: -f2)
-    _reset_raw=$(curl -s --max-time 10 -X POST -u "$ADMIN_AUTH" "$HOST/api/users/change_password" \
+    # User exists but creds missing/stale - reset password via admin API
+    SCANNER_PW="$(openssl rand -base64 30 | tr -d '/+=' | cut -c1-24)_Sc!@l"
+    _ch_resp=$(curl -s --max-time 10 -X POST -u "$ADMIN_AUTH" "$HOST/api/users/change_password" \
       --data-urlencode "login=$SCANNER_LOGIN" \
-      --data-urlencode "previousPassword=$_old_pw" \
-      --data-urlencode "password=$SCANNER_PW") || _reset_raw=""
-    if auth_ok "$SCANNER_LOGIN:$SCANNER_PW"; then
-      printf '%s' "$SCANNER_LOGIN:$SCANNER_PW" > "$SCANNER_FILE"
-      chmod 600 "$SCANNER_FILE"
-      SCANNER_AUTH="$SCANNER_LOGIN:$SCANNER_PW"
-      log "scanner user password reset (persisted 600)"
+      --data-urlencode "password=$SCANNER_PW") || true
+    if [ -n "$_ch_resp" ] && json_get "$_ch_resp" '.result' '' = "Password changed"; then
+      :
+    elif [ -z "$_ch_resp" ]; then
+      : # 204 No Content = success (change_password returns empty body)
     else
-      die "cannot reset scanner user password"
+      die "scanner user exists but password rotation failed: $(json_get "$_ch_resp" '.errors[0].msg // .message')"
+    fi
+    printf '%s' "$SCANNER_LOGIN:$SCANNER_PW" > "$SCANNER_FILE"
+    chmod 600 "$SCANNER_FILE"
+    SCANNER_AUTH="$SCANNER_LOGIN:$SCANNER_PW"
+    if auth_ok "$SCANNER_AUTH"; then
+      log "scanner user password rotated (persisted 600)"
+    else
+      die "scanner user rotation completed but auth validation failed"
     fi
   fi
 else
-  SCANNER_PW="$(openssl rand -base64 30 | tr -d '/+=' | cut -c1-28)"
-  _sc_raw=$(curl -s --max-time 10 -X POST -u "$ADMIN_AUTH" "$HOST/api/users/create?login=$SCANNER_LOGIN&name=Lab%20Scanner&password=$SCANNER_PW") || _sc_raw=""
-  _sc_login=$(json_get "$_sc_raw" '.user.login')
+  SCANNER_PW="$(openssl rand -base64 30 | tr -d '/+=' | cut -c1-24)_Sc!@l"
+  _sc_resp=$(curl -s --max-time 10 -X POST -u "$ADMIN_AUTH" "$HOST/api/users/create" \
+    --data-urlencode "login=$SCANNER_LOGIN" \
+    --data-urlencode "name=Lab Scanner" \
+    --data-urlencode "password=$SCANNER_PW") || _sc_resp=""
+  _sc_login=$(json_get "$_sc_resp" '.user.login')
   if [ "$_sc_login" != "$SCANNER_LOGIN" ]; then
-    die "cannot create scanner user"
+    die "cannot create scanner user: $(json_get "$_sc_resp" '.errors[0].msg')"
   fi
   printf '%s' "$SCANNER_LOGIN:$SCANNER_PW" > "$SCANNER_FILE"
   chmod 600 "$SCANNER_FILE"
@@ -192,10 +208,12 @@ else
   log "scanner user created (persisted 600)"
 fi
 
-# minimum permissions: global scan + project codeviewer
-as_admin POST "/api/permissions/add_global_permission?login=$SCANNER_LOGIN&permission=scan" >/dev/null 2>&1 || true
+# minimum permissions: global scan + admin (required for token generation) + project codeviewer + scan
+as_admin POST "/api/permissions/add_user?permission=scan&login=$SCANNER_LOGIN" >/dev/null 2>&1 || true
+as_admin POST "/api/permissions/add_user?permission=admin&login=$SCANNER_LOGIN" >/dev/null 2>&1 || true
 as_admin POST "/api/permissions/add_user?projectIdorKey=$PROJECT_KEY&login=$SCANNER_LOGIN&permission=codeviewer" >/dev/null 2>&1 || true
 as_admin POST "/api/permissions/add_user?projectIdorKey=$PROJECT_KEY&login=$SCANNER_LOGIN&permission=user" >/dev/null 2>&1 || true
+as_admin POST "/api/permissions/add_user?projectIdorKey=$PROJECT_KEY&login=$SCANNER_LOGIN&permission=scan" >/dev/null 2>&1 || true
 log "scanner permissions ensured"
 
 # ------------------------------------------------------- 6. token
@@ -210,8 +228,10 @@ _revoke_token() {
   else
     _rname="$TOKEN_NAME"
   fi
+  # Revoke any existing token for this user (admin call)
   as_admin POST "/api/user_tokens/search?login=$SCANNER_LOGIN" >/dev/null 2>&1 || true
   as_admin POST "/api/user_tokens/revoke?login=$SCANNER_LOGIN&name=$_rname" >/dev/null 2>&1 || true
+  true
 }
 
 if token_valid && [ "$ROTATE" != "1" ]; then
@@ -222,8 +242,7 @@ else
   _tok_resp=$(as_admin POST "/api/user_tokens/generate?login=$SCANNER_LOGIN&name=$TOKEN_NAME") || _tok_resp=""
   TOKEN=$(json_get "$_tok_resp" '.token // empty' '""')
   if [ -z "$TOKEN" ] || [ "$TOKEN" = '""' ]; then
-    _terr=$(json_get "$_tok_resp" '.errors[0].msg' 2>/dev/null || echo "$_tok_resp" | head -c 200)
-    die "token generation failed: $_terr"
+    die "token generation failed: $(json_get "$_tok_resp" '.errors[0].msg' 2>/dev/null || echo "$_tok_resp" | head -c 200)"
   fi
   printf '%s' "$TOKEN" > "$TOKEN_FILE"
   chmod 600 "$TOKEN_FILE"

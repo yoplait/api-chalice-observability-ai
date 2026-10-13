@@ -17,7 +17,7 @@ DURATION_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.
 
 
 def _fmt_labels(label_names: tuple[str, ...], label_values: tuple[str, ...]) -> str:
-    pairs = ",".join(f'{n}="{v}"' for n, v in zip(label_names, label_values))
+    pairs = ",".join(f'{n}="{v}"' for n, v in zip(label_names, label_values, strict=True))
     return "{" + pairs + "}"
 
 
@@ -77,11 +77,11 @@ class Histogram:
             sums = dict(self._sums)
             totals = dict(self._totals)
         for label_values, cumulative in items:
-            for upper, count in zip(self.buckets, cumulative):
+            for upper, count in zip(self.buckets, cumulative, strict=True):
                 le = f"{upper:g}"
                 out.append(
                     f"{self.name}_bucket"
-                    f'{_fmt_labels(self.label_names + ("le",), label_values + (le,))} {count}'
+                    f'{_fmt_labels((*self.label_names, "le"), (*label_values, le))} {count}'
                 )
             escaped = tuple(_escape(v) for v in label_values)
             out.append(

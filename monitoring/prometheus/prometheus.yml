@@ -46,3 +46,37 @@ scrape_configs:
         target_label: __param_module
       - target_label: __address__
         replacement: blackbox-exporter:9115
+
+  - job_name: statuspage-exporter
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["statuspage-exporter:9118"]
+
+  - job_name: external-status-pages
+    metrics_path: /probe
+    params:
+      module: [http_status_page]
+    static_configs:
+      - targets:
+          - https://status.okta.com
+          - https://status.aws.amazon.com
+          - https://status.github.com
+          - https://status.stripe.com
+          - https://status.twilio.com
+          - https://www.datadog.com/status
+        labels:
+          service: external-status
+          region: global
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - source_labels: [module]
+        target_label: __param_module
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+      - source_labels: [__param_target]
+        target_label: external_target
+      - target_label: job
+        replacement: external-status-pages

@@ -15,8 +15,7 @@ GRAFANA_PWD ?= $(shell grep -m1 '^GRAFANA_ADMIN_PASSWORD' .env 2>/dev/null | cut
 # ---- helpers ----
 .PHONY: all help up down destroy bootstrap status logs validate lint security test coverage
 .PHONY: smoke-test observability-validate traffic traffic-errors traffic-latency
-.PHONY: sonar sonar-init sonar-rotate-token quality-gate aws-package
-.PHONY: creds
+.PHONY: sonar sonar-init sonar-rotate-token quality-gate aws-package creds start stop screenshots
 
 all: validate
 
@@ -27,6 +26,8 @@ help:
 	@echo "  make up                Start infrastructure (compose)"
 	@echo "  make down              Stop containers (keep volumes)"
 	@echo "  make destroy           Remove volumes (confirmation required)"
+	@echo "  make start             Full stack: build, up all profiles, wait for API health"
+	@echo "  make stop              Stop all containers"
 	@echo "  make bootstrap         Full zero-touch first boot (see below)"
 	@echo "  make status            Container health summary"
 	@echo "  make logs [svc]        docker compose logs"
@@ -46,6 +47,35 @@ help:
 	@echo "  make validate          Full pipeline (lint → test → sonar → gate → smoke → e2e)"
 	@echo "  make aws-package       chalice package + validate SAM"
 	@echo "============================================================"
+
+# ── lifecycle ────────────────────────────────────────────────────
+start: .env
+	@mkdir -p .sonar && chmod 700 .sonar
+	@rm -f .sonar/token .sonar/token-meta .sonar/scanner-credentials
+	@echo "  [1/5] Building images..."
+	$(COMPOSE) $(COMPOSE_FLAGS) build -q
+	@echo "  [2/5] Starting ALL services (except one-shots)..."
+	$(COMPOSE) $(COMPOSE_FLAGS) --profile traffic up -d chalice-api sonarqube sonarqube-db blackbox-exporter prometheus grafana synthetic-traffic
+	@bash -c 'for i in $$(seq 1 30); do if curl -sf http://localhost:$(API_PORT)/health >/dev/null 2>&1; then echo "  API ready"; exit 0; fi; sleep 2; done; echo "  [WARN] API not healthy after 60s"; exit 1'
+	@echo "  [3/5] Waiting for SonarQube health..."
+	@bash -c 'for i in $$(seq 1 20); do if curl -sf http://localhost:9000/api/system/status >/dev/null 2>&1 && grep -q UP <<< "$$(curl -sf http://localhost:9000/api/system/status)"; then echo "  SonarQube ready"; exit 0; fi; sleep 3; done; echo "  [WARN] SonarQube not healthy after 60s"; exit 1'
+	@echo "  [4/5] Waiting for networks to stabilize..."
+	@sleep 5
+	@echo "  [5/5] Initializing SonarQube..."
+	@$(COMPOSE) $(COMPOSE_FLAGS) --profile quality run -T --rm --no-deps sonar-bootstrap
+	@echo ""
+	@echo "  ┌─ All services running ──────────────────────────────────────┐"
+	@echo "  │  API       : http://localhost:$(API_PORT)"
+	@echo "  │  SonarQube : http://localhost:9000   (admin creds en .sonar/admin-credentials)"
+	@echo "  │  Grafana   : http://localhost:3001   (admin creds en .env)"
+	@echo "  │  Prometheus: http://localhost:9090"
+	@echo "  │  Blackbox  : http://localhost:9115"
+	@echo "  └──────────────────────────────────────────────────────────────┘"
+
+stop:
+	@echo "  Stopping all containers..."
+	$(COMPOSE) $(COMPOSE_FLAGS) --profile quality --profile traffic --profile test down --remove-orphans
+	@echo "  Done."
 
 # ── infrastructure ────────────────────────────────────────────
 up: .env
@@ -110,6 +140,11 @@ sonar-rotate-token: .env
 	SONAR_ROTATE_TOKEN=1 $(COMPOSE) $(COMPOSE_FLAGS) --profile quality run -T --rm --no-deps sonar-bootstrap
 
 quality-gate: sonar
+	@mkdir -p reports
+	@if [ ! -s coverage.xml ]; then \
+		echo "  [coverage] coverage.xml missing — running tests"; \
+		$(COV) -q --cov --cov-report=xml:coverage.xml || $(VENV)/bin/pytest -q --cov --cov-report=xml:coverage.xml; \
+	fi
 	@bash scripts/validation/quality_gate.sh
 
 # ── smoke & monitoring ────────────────────────────────────────
@@ -232,3 +267,7 @@ validate: lint security coverage sonar quality-gate smoke-test observability-val
 	@echo "============================================================"
 	@echo "  VALIDATE: ALL PASSED"
 	@echo "============================================================"
+# ---- screenshots ----------------------------------------------
+screenshots:
+	@mkdir -p screenshots
+	$(PYTHON) scripts/screenshots.py
