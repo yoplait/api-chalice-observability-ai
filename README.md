@@ -70,6 +70,21 @@ A fully reproducible, zero-touch local DevOps platform for an AWS Chalice REST A
 
 ---
 
+## Plain-English docs
+
+New to the pieces? These short notes explain each one in everyday language
+(what it is, why it exists, the one gotcha that matters):
+
+- [What is an exporter?](docs/explanations/01-what-is-an-exporter.md) — and the two we use (blackbox vs statuspage)
+- [Prometheus](docs/explanations/02-prometheus.md) — the numbers-over-time DB and how scraping works
+- [Grafana](docs/explanations/03-grafana.md) — the visualization layer
+- [The API](docs/explanations/04-the-api.md) — what the Chalice service is and its endpoints
+- [SonarQube CI/CD flow](docs/explanations/05-sonar-cicd-flow.md) — scan → judge → gate
+
+Index: [docs/explanations/](docs/explanations/README.md)
+
+---
+
 ## Quick Start
 
 ```bash
