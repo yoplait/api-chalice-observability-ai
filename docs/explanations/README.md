@@ -10,6 +10,7 @@ Written for someone who wants the mental model first, the details second.
 | [03-grafana.md](03-grafana.md) | The visualization layer |
 | [04-the-api.md](04-the-api.md) | What the Chalice API is and its endpoints |
 | [05-sonar-cicd-flow.md](05-sonar-cicd-flow.md) | The code-quality CI/CD flow with SonarQube |
+| [06-local-vs-github-actions-cicd.md](06-local-vs-github-actions-cicd.md) | How the pipeline runs locally vs on GitHub Actions |
 
 Rule of thumb used everywhere: **collect → store → show**.
 Exporters collect, Prometheus stores, Grafana shows. SonarQube is a separate

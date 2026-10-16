@@ -30,29 +30,59 @@ curl_ok(){
   return 0
 }
 
-# ── 1. Wait for CE task to finish ──────────────────────────────
-echo -n "  Waiting for CE analysis to finish... "
-deadline=$(( $(date +%s) + 60 ))
+# ── 1. Wait for the CE task produced by THIS scan to finish ───
+# Race we are fixing: right after the scanner uploads, the new CE task may not
+# be queued yet, so /api/ce/component still reports the PREVIOUS analysis as
+# `.current` = SUCCESS. Naively breaking there makes us read stale measures
+# (e.g. last run's coverage). So we snapshot the last known task id as a
+# baseline and only accept a *different* id reaching a terminal state.
+CE_TIMEOUT="${CE_TIMEOUT:-90}"
+echo -n "  Waiting for this scan's CE analysis to finish... "
+
+# Baseline: id of the most recent task already known to Sonar (may be empty on
+# the very first analysis).
+baseline=""
+if curl_ok "$SONAR/api/ce/component?component=$PROJECT"; then
+  baseline="$(echo "$_raw" | jq -r '.current.id // empty')"
+fi
+
+deadline=$(( $(date +%s) + CE_TIMEOUT ))
+grace=$(( $(date +%s) + 12 ))
 task_id=""
 current_status="QUEUED"
+fresh=0
+seen_new=0
 while [ "$(date +%s)" -lt "$deadline" ]; do
   if curl_ok "$SONAR/api/ce/component?component=$PROJECT"; then
     current_status="$(echo "$_raw" | jq -r '.current.status // "QUEUED"')"
     task_id="$(echo "$_raw" | jq -r '.current.id // empty')"
-    if [ "$current_status" = "SUCCESS" ]; then
-      echo "SUCCESS (task=$task_id)"
-      break
-    elif [ "$current_status" = "FAILED" ] || [ "$current_status" = "ERR" ]; then
-      echo "FAILED"; assert "CE task succeeded" false; exit 1
+    # A new (non-baseline) task in `.current` or `.pending` means THIS scan is
+    # in flight; track it and wait for its terminal state.
+    pending_new="$(echo "$_raw" | jq --arg b "$baseline" \
+      '[.pending[]? | select(.id != $b)] | length')"
+    if [ -n "$baseline" ] && [ "$task_id" != "$baseline" ]; then seen_new=1; fi
+    if [ "$pending_new" != "0" ]; then seen_new=1; fi
+
+    if [ "$seen_new" = "1" ] && { [ -z "$baseline" ] || [ "$task_id" != "$baseline" ]; } \
+        && [ "$current_status" = "SUCCESS" ]; then
+      echo "SUCCESS (task=$task_id)"; fresh=1; break
+    elif [ "$seen_new" = "1" ] && { [ "$current_status" = "FAILED" ] || [ "$current_status" = "CANCELED" ] || [ "$current_status" = "ERR" ]; }; then
+      echo "$current_status"; assert "CE task succeeded" false; exit 1
+    elif [ "$seen_new" = "0" ] && [ "$(date +%s)" -ge "$grace" ]; then
+      # No new analysis ever appeared for this component within the grace window
+      # -> nobody ran a fresh scan before us; the existing measures are current.
+      echo "no-op (no new scan submitted; trusting latest measures)"; fresh=1; break
     fi
   fi
-  sleep 3
+  sleep 2
 done
 
-if [ "$current_status" != "SUCCESS" ] && [ -z "$task_id" ]; then
-  echo "  [WARN] No CE task found; proceeding anyway"
-elif [ "$current_status" != "SUCCESS" ]; then
-  echo "  [WARN] CE not done after 60s (status=$current_status), proceeding anyway"
+if [ "$fresh" = "1" ]; then
+  :
+elif [ -z "$task_id" ]; then
+  echo ""; echo "  [WARN] No CE task found; proceeding anyway"
+else
+  echo ""; echo "  [WARN] CE not confirmed after ${CE_TIMEOUT}s (status=$current_status), proceeding anyway"
 fi
 
 # ── 2. Fetch Quality Gate definition ──────────────────────────
