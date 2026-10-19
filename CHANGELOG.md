@@ -6,8 +6,26 @@ _Conventional Commits, orden **cronológico por día** (más reciente arriba); d
 
 Cada **`v*`** es una versión **semver** en Git; la fecha es la del **commit** al que apunta el tag.
 
+- **`v0.3.0`** — 2026-10-19
 - **`v0.2.0`** — 2026-10-13
 - **`v0.1.0`** — 2026-10-08
+
+## 2026-10-19
+
+_**Versión(es) semver** etiquetada(s) con commit en esta fecha: `v0.3.0`_
+
+### CI
+- full-pipeline workflow + v0.3.0 (#1) (`85146c8`)
+
+## 2026-10-16
+
+### Fixes
+- make quality gate CE-wait race-safe; add CI/CD explanation (`8c3fd53`)
+
+## 2026-10-15
+
+### Documentation
+- add plain-English explanations for each component (`0ba309f`)
 
 ## 2026-10-13
 
@@ -15,6 +33,11 @@ _**Versión(es) semver** etiquetada(s) con commit en esta fecha: `v0.2.0`_
 
 ### Features
 - external status-page incident monitoring + lifecycle fixes (`ac47535`)
+
+### Documentation
+- embed dashboard & quality-gate screenshots (`8fa0343`)
+- fix architecture diagram + add credentials alias (`14e7941`)
+- bare 'make' shows help; README architecture diagram rebuilt (`88641ca`)
 
 ## 2026-10-08
 
