@@ -24,6 +24,13 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: Pin bootstrap container UID to host user
+        # The sonar-bootstrap container writes into a bind-mounted ./.sonar dir.
+        # Linux enforces real POSIX UIDs, so we match the container to the host
+        # user for ALL bootstrap invocations (make start, make sonar-init).
+        # Docker Desktop on macOS maps UIDs transparently and ignores this.
+        run: echo "BOOTSTRAP_UID=$(id -u):$(id -g)" >> "$GITHUB_ENV"
+
       - name: Install venv dependencies
         run: |
           python -m venv .venv
