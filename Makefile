@@ -15,7 +15,7 @@ GRAFANA_PWD ?= $(shell grep -m1 '^GRAFANA_ADMIN_PASSWORD' .env 2>/dev/null | cut
 # ---- helpers ----
 .PHONY: all help up down destroy bootstrap status logs validate lint security test coverage
 .PHONY: smoke-test observability-validate traffic traffic-errors traffic-latency
-.PHONY: sonar sonar-init sonar-rotate-token quality-gate aws-package creds credentials start stop screenshots
+.PHONY: sonar sonar-init sonar-rotate-token quality-gate aws-package creds credentials start stop screenshots deploy
 
 all: help
 
@@ -46,6 +46,7 @@ help:
 	@echo "  make traffic-latency   Traffic with latency (profile)"
 	@echo "  make validate          Full pipeline (lint → test → sonar → gate → smoke → e2e)"
 	@echo "  make aws-package       chalice package + validate SAM"
+	@echo "  make deploy            chalice deploy to Lambda/API Gateway (prod)"
 	@echo "  make creds             Show all lab credentials (alias: make credentials)"
 	@echo "  make screenshots       Regenerate dashboard screenshots (Playwright)"
 	@echo "============================================================"
@@ -175,6 +176,9 @@ aws-package:
 	$(VENV)/bin/chalice package --sam-template sam_out/
 	@echo "  ─ SAM template: sam_out/template.yaml"
 	@ls -lh sam_out/
+
+deploy: aws-package
+	@scripts/deploy_lambda.sh
 
 # ── credentials ───────────────────────────────────────────────
 creds:

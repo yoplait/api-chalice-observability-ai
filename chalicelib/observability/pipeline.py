@@ -15,7 +15,9 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
+from chalicelib.config import get_config
 from chalicelib.logging import correlation_id_var
+from chalicelib.observability import metrics_lambda
 from chalicelib.observability.metrics import REGISTRY
 
 log = logging.getLogger("chalicelib.access")
@@ -42,6 +44,12 @@ def middleware(request: Any, get_response: Callable[[Any], Any]) -> Any:
         status = int(getattr(response, "status_code", 500))
         route = getattr(request, "path", "") or "/"
         REGISTRY.observe_request(route, (request.method or "GET").upper(), status, duration)
+        if get_config().metrics_backend == "cloudwatch":
+            # AWS Lambda definitive path: push dimensions to CloudWatch (EMF).
+            # The in-process registry is still updated above (harmless) so local
+            # behavior and tests are completely unchanged.
+            metrics_lambda.observe_request(route, (request.method or "GET").upper(), status, duration)
+            metrics_lambda.flush()
         log.info(
             "request completed",
             extra={

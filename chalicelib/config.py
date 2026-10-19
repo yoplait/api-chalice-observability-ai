@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 VALID_STAGES = ("dev", "staging", "prod")
 TRUE_VALUES = ("1", "true", "yes", "on")
+VALID_METRICS_BACKENDS = ("inproc", "cloudwatch")
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -24,6 +25,8 @@ class Config:
     log_level: str = "INFO"
     demo_enabled: bool = True
     metrics_enabled: bool = True
+    metrics_backend: str = "inproc"
+    on_lambda: bool = False
     maintenance: bool = False
     demo_max_delay: float = 5.0
 
@@ -53,12 +56,26 @@ class Config:
         # even if the flag is mistakenly set to true.
         if stage == "prod":
             demo_enabled = False
+
+        on_lambda = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+        default_backend = "cloudwatch" if on_lambda else "inproc"
+        metrics_backend_raw = os.environ.get(
+            "METRICS_BACKEND", default_backend
+        ).strip().lower()
+        if metrics_backend_raw not in VALID_METRICS_BACKENDS:
+            raise ValueError(
+                f"METRICS_BACKEND must be one of {VALID_METRICS_BACKENDS}, "
+                f"got {metrics_backend_raw!r}"
+            )
+
         return cls(
             stage=stage,
             service_name=os.environ.get("SERVICE_NAME", "chalice-api"),
             log_level=log_level,
             demo_enabled=demo_enabled,
             metrics_enabled=_env_bool("METRICS_ENABLED", True),
+            metrics_backend=metrics_backend_raw,
+            on_lambda=on_lambda,
             maintenance=_env_bool("MAINTENANCE_MODE", False),
             demo_max_delay=demo_max_delay,
         )

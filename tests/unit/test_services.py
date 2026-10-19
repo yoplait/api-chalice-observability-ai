@@ -87,3 +87,12 @@ def test_readiness_metrics_disabled_in_prod_not_ready():
     ok, payload = readiness.readiness(cfg)
     assert ok is False
     assert "metrics_disabled_in_prod" in payload["reasons"]
+
+
+def test_readiness_cloudwatch_backend_makes_prod_ready():
+    """When backend is cloudwatch, prod is healthy even if the local scrape
+    endpoint is disabled (which is the normal Lambda deployment mode)."""
+    cfg = Config(stage="prod", metrics_enabled=False, metrics_backend="cloudwatch")
+    ok, payload = readiness.readiness(cfg)
+    assert ok is True
+    assert payload["checks"]["metrics"] == "cloudwatch"

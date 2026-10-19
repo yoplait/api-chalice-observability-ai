@@ -12,17 +12,18 @@
         "DEMO_ENDPOINTS_ENABLED": "true"
       }
     },
-    "prod": {
-      "api_gateway_stage": "prod",
-      "autogen_policy": false,
-      "iam_policy_file": "policy-prod.json",
-      "lambda_python_runtime": "python3.12",
-      "environment_variables": {
-        "APP_STAGE": "prod",
-        "LOG_LEVEL": "WARNING",
-        "METRICS_ENABLED": "false",
-        "DEMO_ENDPOINTS_ENABLED": "false"
+"prod": {
+        "api_gateway_stage": "prod",
+        "autogen_policy": false,
+        "iam_policy_file": "policy-prod.json",
+        "lambda_python_runtime": "python3.12",
+        "environment_variables": {
+          "APP_STAGE": "prod",
+          "LOG_LEVEL": "WARNING",
+          "METRICS_ENABLED": "false",
+          "METRICS_BACKEND": "cloudwatch",
+          "DEMO_ENDPOINTS_ENABLED": "false"
+        }
       }
-    }
   }
 }

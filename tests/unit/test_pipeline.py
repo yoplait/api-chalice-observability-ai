@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from chalicelib.observability import pipeline
+from chalicelib.config import Config, set_config
+from chalicelib.observability import metrics_lambda, pipeline
 from chalicelib.observability.metrics import REGISTRY
 
 
@@ -61,3 +62,35 @@ def test_middleware_exception_still_records_and_reraises():
     with pytest.raises(RuntimeError):
         pipeline.middleware(FakeRequest(), boom)
     assert REGISTRY.requests_total._values[("/hello", "GET", "5xx")] == calls_before + 1.0
+
+
+class _Recorder:
+    def __init__(self):
+        self.metrics = []
+        self.flushes = 0
+
+    def add_metric(self, name, *, unit, value=1, **dimensions):
+        self.metrics.append((name, dimensions))
+
+    def flush_metrics(self):
+        self.flushes += 1
+
+
+def test_middleware_cloudwatch_backend_pushes_and_still_records(monkeypatch):
+    rec = _Recorder()
+    metrics_lambda.configure(rec)
+    set_config(Config(stage="prod", metrics_backend="cloudwatch"))
+    try:
+        before = REGISTRY.requests_total._values.get(("/hello", "GET", "5xx"), 0.0)
+        result = pipeline.middleware(FakeRequest(path="/hello"), lambda req: FakeResponse(503))
+        assert result.status_code == 503
+        # in-process registry still updated (local model untouched)
+        assert REGISTRY.requests_total._values[("/hello", "GET", "5xx")] == before + 1.0
+        # cloudwatch backend also pushed, including the 5xx error metric, then flushed
+        names = [m[0] for m in rec.metrics]
+        assert "http_requests" in names and "http_errors" in names
+        assert rec.flushes == 1
+    finally:
+        metrics_lambda._SINK = None
+        set_config(Config())
+

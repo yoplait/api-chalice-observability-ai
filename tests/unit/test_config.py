@@ -12,8 +12,10 @@ BASE_KEYS = {
     "SERVICE_NAME": None,
     "DEMO_ENDPOINTS_ENABLED": None,
     "METRICS_ENABLED": None,
+    "METRICS_BACKEND": None,
     "MAINTENANCE_MODE": None,
     "DEMO_MAX_DELAY_SECONDS": None,
+    "AWS_LAMBDA_FUNCTION_NAME": None,
 }
 
 
@@ -30,9 +32,37 @@ def test_defaults():
     assert cfg.log_level == "INFO"
     assert cfg.demo_enabled is True
     assert cfg.metrics_enabled is True
+    assert cfg.metrics_backend == "inproc"
+    assert cfg.on_lambda is False
     assert cfg.maintenance is False
     assert cfg.demo_max_delay == 5.0
     assert cfg.is_prod is False
+
+
+def test_metrics_backend_explicit(monkeypatch):
+    monkeypatch.setenv("METRICS_BACKEND", "cloudwatch")
+    assert Config.load().metrics_backend == "cloudwatch"
+
+
+def test_invalid_metrics_backend_raises(monkeypatch):
+    monkeypatch.setenv("METRICS_BACKEND", "statsd")
+    with pytest.raises(ValueError, match="METRICS_BACKEND"):
+        Config.load()
+
+
+def test_on_lambda_detected_and_defaults_backend(monkeypatch):
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "chalice-devops-lab-prod")
+    cfg = Config.load()
+    assert cfg.on_lambda is True
+    assert cfg.metrics_backend == "cloudwatch"  # auto-picked when unset on Lambda
+
+
+def test_on_lambda_backend_can_be_overridden(monkeypatch):
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "fn")
+    monkeypatch.setenv("METRICS_BACKEND", "inproc")
+    cfg = Config.load()
+    assert cfg.on_lambda is True
+    assert cfg.metrics_backend == "inproc"
 
 
 def test_stage_normalized_and_prod_forces_demo_off(monkeypatch):

@@ -81,6 +81,10 @@ New to the pieces? These short notes explain each one in everyday language
 - [The API](docs/explanations/04-the-api.md) — what the Chalice service is and its endpoints
 - [SonarQube CI/CD flow](docs/explanations/05-sonar-cicd-flow.md) — scan → judge → gate
 
+For the AWS Lambda deployment path (push metrics to CloudWatch) and the full
+local-vs-Lambda observability model, see
+[docs/observability.md](docs/observability.md).
+
 Index: [docs/explanations/](docs/explanations/README.md)
 
 ---

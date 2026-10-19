@@ -14,12 +14,22 @@ def readiness(cfg: Config) -> tuple[bool, dict]:
     reasons: list[str] = []
     if cfg.maintenance:
         reasons.append("maintenance_mode")
-    if not cfg.metrics_enabled and cfg.is_prod:
+
+    if cfg.metrics_backend == "cloudwatch":
+        metrics_status = "cloudwatch"
+    elif cfg.metrics_enabled:
+        metrics_status = "enabled"
+    else:
+        metrics_status = "disabled"
+
+    # Prod must report metrics somewhere: either the in-process scrape endpoint
+    # is enabled, or we push to CloudWatch (the Lambda-definitive backend).
+    if cfg.is_prod and metrics_status == "disabled":
         reasons.append("metrics_disabled_in_prod")
 
     checks = {
         "config": "ok",
-        "metrics": "enabled" if cfg.metrics_enabled else "disabled",
+        "metrics": metrics_status,
         "maintenance": "on" if cfg.maintenance else "off",
     }
     ready = not reasons

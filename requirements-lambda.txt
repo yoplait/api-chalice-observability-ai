@@ -1,0 +1,5 @@
+-r requirements.txt
+# AWS Lambda Powertools — CloudWatch EMF (Embedded Metric Format) backend.
+# Used only on Lambda (METRICS_BACKEND=cloudwatch); NOT needed locally, where
+# the in-process Prometheus registry at /metrics is the source of truth.
+aws-lambda-powertools==3.14.0
