@@ -1,6 +1,6 @@
 [project]
 name = "chalice-devops-lab"
-version = "1.0.0"
+version = "0.3.0"
 description = "AWS Chalice REST API with a full local DevOps platform: tests, coverage, SonarQube, Prometheus, Blackbox, Grafana"
 requires-python = ">=3.12"
 dependencies = ["chalice==1.33.0"]

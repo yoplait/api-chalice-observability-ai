@@ -223,6 +223,10 @@ services:
     build:
       context: docker/sonar-bootstrap
     image: chalice-devops-lab/sonar-bootstrap:local
+    # On hosts with strict UID mapping (Linux CI) the container needs to write
+    # to the bind-mounted ./.sonar directory. Set BOOTSTRAP_UID=$(id -u) on the
+    # caller side; leave unset locally and Docker Desktop maps transparently.
+    user: "${BOOTSTRAP_UID:-boot}"
     entrypoint: ["bash", "/work/sonar_bootstrap.sh"]
     environment:
       SONAR_HOST_URL: http://sonarqube:9000

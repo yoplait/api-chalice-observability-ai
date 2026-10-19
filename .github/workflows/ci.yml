@@ -1,0 +1,94 @@
+name: CI Pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Full pipeline (lint → test → coverage → Sonar → gate → smoke → e2e)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Kernel prereqs (SonarQube Elasticsearch)
+        run: sudo sysctl -w vm.max_map_count=262144
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Pin bootstrap container UID to host user
+        # The sonar-bootstrap container writes into a bind-mounted ./.sonar dir.
+        # Linux enforces real POSIX UIDs, so we match the container to the host
+        # user for ALL bootstrap invocations (make start, make sonar-init).
+        # Docker Desktop on macOS maps UIDs transparently and ignores this.
+        run: echo "BOOTSTRAP_UID=$(id -u):$(id -g)" >> "$GITHUB_ENV"
+
+      - name: Install venv dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q --upgrade pip
+          .venv/bin/pip install -q -r requirements-dev.txt
+
+      - name: Prepare .env
+        run: |
+          cp .env.example .env
+          sed -i "s|^GRAFANA_ADMIN_PASSWORD=.*|GRAFANA_ADMIN_PASSWORD=ci-$(date +%s)|" .env
+          sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=ci-$(date +%s)|" .env
+
+      - name: Build and start stack
+        run: make start
+
+      - name: Full validation pipeline
+        run: make validate
+
+      - name: Publish step summary
+        if: always()
+        run: |
+          {
+            echo "## Validation pipeline — ephemeral run report"
+            echo ""
+            echo "**Status:** ${{ job.status }}"
+            echo "**Commit:** ${{ github.sha }}  ·  Ref: ${{ github.ref }}"
+            echo "**Runner:** ubuntu-latest (SonarQube ephemeral; no state persists across runs)"
+            echo ""
+            echo "### Coverage"
+            if [ -f coverage.xml ]; then
+              LINES=$(grep -oP 'line-rate="\K[0-9.]+' coverage.xml | head -1)
+              BRANCHES=$(grep -oP 'branch-rate="\K[0-9.]+' coverage.xml | head -1)
+              echo "- line coverage: $LINES"
+              echo "- branch coverage: $BRANCHES"
+            fi
+            echo ""
+            echo "### Test report (JUnit)"
+            if [ -f reports/junit.xml ]; then
+              T=$(grep -oP 'tests="\K[0-9]+' reports/junit.xml | head -1)
+              F=$(grep -oP 'failures="\K[0-9]+' reports/junit.xml | head -1)
+              E=$(grep -oP 'errors="\K[0-9]+' reports/junit.xml | head -1)
+              echo "- tests: ${T:-?}  failures: ${F:-?}  errors: ${E:-?}"
+            fi
+            echo ""
+            echo "### Pipeline log"
+            echo "See the \`make validate\` step above for full per-stage PASS/FAIL breakdown."
+            echo "Artifacts: \`coverage.xml\`, \`reports/junit.xml\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-reports
+          path: |
+            coverage.xml
+            reports/
+
+      - name: Tear down stack
+        if: always()
+        run: make destroy
