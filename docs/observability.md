@@ -12,6 +12,22 @@ changes for a real Lambda deployment — **without breaking the local test model
 
 ---
 
+## Quick comparison: local vs AWS Lambda
+
+| Feature | Local (dev) | AWS Lambda (prod) |
+|---------|-------------|-------------------|
+| **Metrics collection** | **Pull**: Prometheus scrapes your `/metrics` endpoint every 15s. | **Push**: Each request sends its dimensions to CloudWatch (EMF). |
+| **Long-lived process?** | Yes (`chalice local` or Docker). Counters accumulate in RAM. | No. The microVM freezes after every request and resets. |
+| **`/metrics` HTTP route?** | Active and scrapeable by Prometheus. | Disabled (`METRICS_ENABLED: false`). No stable port to scrape. |
+| **Where data is stored?** | In-memory Python dict + Prometheus TSDB. | CloudWatch Metrics server-side (aggregated by AWS). |
+| **Visualisation** | Grafana (connected to Prometheus). | CloudWatch Console / Grafana (connected to CloudWatch datasource). |
+| **Required dependencies** | `chalice` only. | `chalice` + `aws-lambda-powertools` (only when `METRICS_BACKEND=cloudwatch`). |
+| **How to run it** | `make start`, `make validate` | `make deploy`, `aws cloudwatch list-metrics` |
+| **Blackbox probes** | Active (`prom/blackbox-exporter` inside Docker). | Not applicable here (run via CloudWatch Synthetics or external monitors). |
+| **SonarQube** | Runs in Docker (local) or GitHub Actions (CI). | Not required at runtime. SonarQube is a static code analysis tool, not a runtime dependency. |
+
+---
+
 ## 1. How metrics are collected, stored and exposed (the local model)
 
 Three files implement the whole in-process pipeline.
