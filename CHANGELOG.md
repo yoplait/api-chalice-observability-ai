@@ -6,13 +6,24 @@ _Conventional Commits, orden **cronológico por día** (más reciente arriba); d
 
 Cada **`v*`** es una versión **semver** en Git; la fecha es la del **commit** al que apunta el tag.
 
+- **`v0.4.0`** — 2026-10-20
 - **`v0.3.0`** — 2026-10-19
 - **`v0.2.0`** — 2026-10-13
 - **`v0.1.0`** — 2026-10-08
 
+## 2026-10-20
+
+_**Versión(es) semver** etiquetada(s) con commit en esta fecha: `v0.4.0`_
+
+### Documentation
+- add quick local vs AWS Lambda comparison table (`4d7d131`)
+
 ## 2026-10-19
 
 _**Versión(es) semver** etiquetada(s) con commit en esta fecha: `v0.3.0`_
+
+### Features
+- add CloudWatch (EMF) backend for AWS Lambda, fully additive (`0b69be9`)
 
 ### CI
 - full-pipeline workflow + v0.3.0 (#1) (`85146c8`)
