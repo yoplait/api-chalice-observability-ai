@@ -1,63 +1,97 @@
-# Production Paradigm: ECS Containers vs Local Lab
+# Production Paradigm: ECS Deployment (No Prometheus)
 
-This document explains how to move the "closed loop" of the local lab (Prometheus + Docker Compose + Exporters) to a real AWS production environment. The target setup matches your actual infrastructure: **Grafana on ECS, CloudWatch for logs/metrics, and everything else running as ECS containers**.
+This document explains how to move the "closed loop" of the local lab (Prometheus + Docker Compose + Exporters) to a real AWS production environment (ECS + CloudWatch + Grafana).
 
-## 1. The Local Lab (How it works now)
+**Goal:** Maintain the same observability quality and Grafana dashboards without Prometheus, using only ECS containers.
+**Rule:** Local lab remains **unchanged**. This guide is for the AWS deployment only.
 
-Everything runs in a closed Docker loop. Prometheus "pulls" data from containers that expose `/metrics`. Blackbox and statuspage exporters run as simple containers on the same network. Grafana reads from Prometheus.
+## 1. The Problem: "How does Grafana get data in ECS?"
 
-```text
-[Local Docker Network]
-chalice-api --> /metrics
-blackbox-exporter --> pings /health (Probe)
-statuspage-exporter --> pings Okta/Twilio (Export)
-[Prometheus] --> scrapes all /metrics (Pull)
-[Grafana] --> reads Prometheus (Visualization)
+In the local lab, Grafana reads from Prometheus. Prometheus "pulls" (asks) data from your containers.
+In ECS, if we don't use Prometheus, the containers cannot just "wait" for a scrape. They must **push** (write) their data to a storage that Grafana can read.
+
+**The Solution:**
+1.  **The Containers (Exporters/App):** Modified to write their results directly to **CloudWatch Logs** and **CloudWatch Metrics**.
+2.  **Grafana (in ECS):** Connects to CloudWatch (instead of Prometheus) and paints the graphs.
+
+## 2. The Difference in Flow
+
+| Feature | Local Lab (Unchanged) | AWS Deployment (The Shift) |
+| :--- | :--- | :--- |
+| **Data Source** | **Prometheus** (A container that scrapes everything). | **CloudWatch** (AWS Native). |
+| **Exporter Role** | **Passive:** Exposes `/metrics`. Prometheus listens. | **Active:** The container *writes* the data using AWS SDK (`boto3`). |
+| **Grafana Source** | Prometheus Data Source. | CloudWatch Data Source. |
+| **Storage** | Prometheus TSDB. | CloudWatch Logs & Metrics. |
+
+## 3. How to make ECS Containers "Push" to CloudWatch
+
+In the lab, your exporter is a simple Python script. In AWS, you add a few lines so it "talks" to CloudWatch.
+
+### Example: Local Exporter (Lab)
+*Does nothing but sit there.*
+```python
+# Local exporter (Python)
+def check_okta():
+    status = http_get("okta.com")
+    # Prometheus will scrape this value later.
+    print(f"okta_status: {status}") 
 ```
 
-## 2. The Production Environment (ECS Containers + CloudWatch)
+### Example: AWS Exporter (ECS)
+*Actively writes to CloudWatch so Grafana can read it.*
+```python
+# AWS Exporter (Python running on ECS)
+import boto3
+import requests
 
-In production, there is no Prometheus scraping containers. Instead, everything runs as **ECS containers** (or uses native AWS services), and Grafana sits on ECS reading from CloudWatch.
+cloudwatch = boto3.client('cloudwatch')
 
-### How each piece translates to ECS:
+def check_okta():
+    status = requests.get("okta.com").status_code
+    
+    # WE WRITE THE DATA DIRECTLY TO CLOUDWATCH
+    # Now Grafana can read it from CloudWatch!
+    cloudwatch.put_metric_data(
+        Namespace='MyApp/Exports',
+        MetricData=[
+            {
+                'MetricName': 'ExternalStatus',
+                'Value': 1.0 if status == 200 else 0.0,
+                'Dimensions': [
+                    {'Name': 'Service', 'Value': 'Okta'},
+                ]
+            }
+        ]
+    )
+```
 
-| Local Lab Component | Production Equivalent (ECS) | How it works |
-|---------------------|-----------------------------|--------------|
-| **Prometheus** | **ECS Service** (if you want parity) OR **CloudWatch Metrics** (native) | If you keep the same architecture, run Prometheus as an ECS task that scrapes your apps. If you prefer cloud-native, skip Prometheus entirely and use CloudWatch Metrics. |
-| **App `/metrics` route** | **Push to CloudWatch** (Code already exists) | The app writes metrics directly to CloudWatch using `metrics_lambda.py`. No scrape needed. |
-| **Grafana** | **ECS Task** (unchanged) | Connects to CloudWatch Logs/Metrics instead of Prometheus. Same dashboards, different data source. |
-| **Blackbox Exporter** | **ECS Task** | Runs the same `prom/blackbox-exporter` container on ECS. Pings your API from inside the VPC or via a public ALB. |
-| **Statuspage Exporter** | **ECS Task** | Runs your exporter script as an ECS container. Schedules checks every few minutes and writes results to CloudWatch. |
-| **Logs** | **CloudWatch Logs** | Your app already writes JSON logs. ECS forwards them to CloudWatch. Grafana parses them directly. |
+## 4. How Grafana sees it (ECS)
 
-## 3. The Plain-English Flow
+You don't need to change Grafana's logic, only its **Data Source**.
 
-1. **Your API** runs on ECS. Every request is logged as JSON and sends metrics to CloudWatch.
-2. **Blackbox container** runs on ECS. It makes HTTP calls to your API endpoints (`/health`, `/hello`, etc.) and logs success/failure to CloudWatch.
-3. **Exporter containers** (statuspage, etc.) run on ECS. They run on a schedule, check external services, and write the results to CloudWatch.
-4. **CloudWatch** collects all the logs and metrics. It acts as your central time-series and log storage.
-5. **Grafana on ECS** connects to CloudWatch. It reads the metrics and logs, and shows the exact same graphs you have in the lab.
+1.  **Grafana in ECS** connects to **CloudWatch** (not Prometheus).
+2.  In Grafana, you create a "CloudWatch" panel.
+3.  You select the **Namespace** (e.g., `MyApp/Exports`) and **Dimensions** (e.g., `Service=Okta`).
+4.  Grafana draws the same graphs, but the data comes from CloudWatch instead of Prometheus.
 
-**No Prometheus needed unless you specifically want it.** If you keep it, it runs as an ECS container just like everything else. If you drop it, CloudWatch handles the same job natively.
+## 5. Deployment Checklist (AWS Only)
 
-## 4. What changes in the code
+To achieve this "No Prometheus" setup in your closed ECS environment:
 
-| File | Change for Production |
-|------|-----------------------|
-| `chalicelib/observability/metrics.py` | Keeps the in-process counter (local only). |
-| `chalicelib/observability/metrics_lambda.py` | Already written. Pushes to CloudWatch when `METRICS_BACKEND=cloudwatch`. |
-| `chalicelib/observability/pipeline.py` | Calls both local registry AND cloudwatch push when on ECS/Lambda. |
-| `.chalice/config.json` | `prod` stage sets `METRICS_BACKEND=cloudwatch`. |
-| `Dockerfile` (Grafana) | Already prepared. Runs on ECS with CloudWatch datasource. |
+1.  **App & Exporters (ECS):**
+    *   Add a small Python dependency to your containers (`boto3` or `aws-lambda-powertools`).
+    *   Add the code to `put_metric_data` (as seen above) or write structured JSON logs.
+    *   Deploy as standard ECS Tasks/Services.
+2.  **IAM Permissions:**
+    *   Give the ECS Tasks permission to write to CloudWatch: `cloudwatch:PutMetricData`.
+3.  **Grafana (ECS):**
+    *   Add the `CloudWatch` plugin (usually pre-installed or easy to add).
+    *   Point the Data Source to the CloudWatch region where your ECS containers live.
 
-**No other code changes required.** The exporters and probes are just Docker containers. You run them on ECS exactly like you run Grafana.
+## 6. Summary
 
-## 5. Roadmap to production
+*   **Local:** Prometheus listens. (No code changes).
+*   **AWS:** Containers talk to CloudWatch. (Small code addition).
+*   **Grafana:** Always the visualizer. Just changes the cable it plugs into (Prometheus cable -> CloudWatch cable).
 
-1. **Deploy the app** to ECS (via Chalice/Lambda or ECS Fargate). Enable `METRICS_BACKEND=cloudwatch`.
-2. **Deploy Prometheus on ECS** (optional). If you want the exact lab behavior, run it as an ECS service and scrape your apps.
-3. **Deploy exporters as ECS tasks**: blackbox-exporter, statuspage-exporter, etc. Point them at your app's internal or public endpoint.
-4. **Deploy Grafana on ECS** (already have the Dockerfile). Add CloudWatch as a data source. Import your existing dashboards.
-5. **Connect CloudWatch Logs**: Your app already writes JSON. Grafana can query CloudWatch Logs directly.
-
-This keeps your architecture consistent: **everything is a container in ECS**, except where AWS native services (CloudWatch) are simpler. No X-Ray, no forced Lambda jumps, just the same container mindset you already use locally.
+You get the same quality, same graphs, but the data is generated natively in CloudWatch, ready for your ECS deployment.
